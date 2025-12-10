@@ -31,31 +31,22 @@ jobs:
         EC2_HOST: ${{ secrets.EC2_HOST }}
         MCP_PORT: ${{ secrets.MCP_PORT }}
       run: |
-        pytest -q
+        pytest
 
-    # --- 5) Nice CI Summary ---
-    - name: CI Report Summary
-      if: success()
-      run: |
-        echo ""
-        echo "=========== ✅ MCP CI SUMMARY ==========="
-        echo "🎉 All tests passed — proceeding to deploy"
-        echo "=========================================="
-
-    # --- 6) Setup SSH Key ---
+    # --- 5) Setup SSH Key ---
     - name: Setup SSH Key
       run: |
         echo "${{ secrets.EC2_SSH_KEY }}" > ssh_key
         chmod 600 ssh_key
 
-    # --- 7) Upload files to EC2 (ignore .git, workflow, large unnecessary folders) ---
+    # --- 6) Upload files to EC2 (ignore .git, workflow, large unnecessary folders) ---
     - name: Upload files to EC2
       run: |
         rsync -avz --exclude '.git' --exclude '.github' --exclude '__pycache__' \
           -e "ssh -i ssh_key -o StrictHostKeyChecking=no" \
           ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/fastmcp/
 
-    # --- 8) Restart MCP server remotely (Docker Compose) ---
+    # --- 7) Restart MCP server remotely (Docker Compose) ---
     - name: Restart FastMCP
       run: |
         ssh -i ssh_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
