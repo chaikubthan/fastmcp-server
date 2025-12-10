@@ -40,4 +40,4 @@ async def test_get_tools():
     for et in expected_tools:
         assert et in tool_names, f"Missing tool: {et}"
 
-print("\n✅ test_get_tools PASSED — MCP server is working correctly!\n")
+    print("\n✅ test_get_tools PASSED — MCP server is working correctly!\n")
