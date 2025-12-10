@@ -3,3 +3,5 @@ uvicorn
 fastmcp
 langchain-mcp-adapters
 mcp
+pytest
+pytest-asyncio
