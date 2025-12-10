@@ -38,15 +38,21 @@ jobs:
       run: |
         echo "${{ secrets.EC2_SSH_KEY }}" > ssh_key
         chmod 600 ssh_key
+    
+    # --- 6) Check EC2 Health ---
+    - name: Check EC2 Health
+      run: |
+        ssh -i ssh_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "echo 'EC2 OK'"
+        
 
-    # --- 6) Upload files to EC2 (ignore .git, workflow, large unnecessary folders) ---
+    # --- 7) Upload files to EC2 (ignore .git, workflow, large unnecessary folders) ---
     - name: Upload files to EC2
       run: |
         rsync -avz --exclude '.git' --exclude '.github' --exclude '__pycache__' \
           -e "ssh -i ssh_key -o StrictHostKeyChecking=no" \
           ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/fastmcp/
 
-    # --- 7) Restart MCP server remotely (Docker Compose) ---
+    # --- 8) Restart MCP server remotely (Docker Compose) ---
     - name: Restart FastMCP
       run: |
         ssh -i ssh_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
