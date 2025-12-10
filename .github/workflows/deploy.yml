@@ -31,7 +31,7 @@ jobs:
         EC2_HOST: ${{ secrets.EC2_HOST }}
         MCP_PORT: ${{ secrets.MCP_PORT }}
       run: |
-        pytest
+        pytest -rP
 
     # --- 5) Setup SSH Key ---
     - name: Setup SSH Key
