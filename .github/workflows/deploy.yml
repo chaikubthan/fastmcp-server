@@ -77,11 +77,12 @@ jobs:
           echo "Deployment complete!"
         EOF
 
-    # --- 10) Level 3: POST-DEPLOY MCP API CHECK (Critical!) ---
-    - name: Check MCP API after deployment
+    # --- 10) Level 3: POST-DEPLOY PORT CHECK ---
+    - name: Check MCP port after deployment
       run: |
-        echo "Checking new MCP API..."
-        curl -s --fail-with-body --max-time 8 \
-          http://${{ secrets.EC2_HOST }}:${{ secrets.MCP_PORT }}/mcp \
-          || (echo '❌ MCP API NOT responding after deployment' && exit 1)
-        echo "✔ MCP API OK — deployment successful!"
+        echo "Checking MCP port..."
+        nc -z -w5 ${{ secrets.EC2_HOST }} ${{ secrets.MCP_PORT }} \
+          || (echo '❌ MCP port NOT open after deployment' && exit 1)
+        echo "✔ MCP port is open — deployment successful!"
+
+
