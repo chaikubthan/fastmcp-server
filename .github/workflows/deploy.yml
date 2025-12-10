@@ -111,4 +111,10 @@ jobs:
       run: |
         pytest tests/test_mcp_server.py  -rP
 
+    - name: Upload MCP Log
+      uses: actions/upload-artifact@v4
+      with:
+        name: mcp-log
+        path: mcp_server.log        
+
 
