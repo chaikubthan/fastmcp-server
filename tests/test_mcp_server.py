@@ -2,11 +2,9 @@ import pytest
 import os
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-# Read host + port/path from environment variables
 EC2_HOST = os.environ.get("EC2_HOST")
-MCP_PORT = os.environ.get("MCP_PORT")  # example: "3000/mcp"
+MCP_PORT = os.environ.get("MCP_PORT")
 
-# Build full URL: http://host:port/path
 SERVER_URL = f"http://{EC2_HOST}:{MCP_PORT}" if EC2_HOST and MCP_PORT else None
 
 @pytest.mark.asyncio
@@ -24,5 +22,20 @@ async def test_get_tools():
 
     tools = await client.get_tools()
 
-    assert isinstance(tools, dict)
-    assert len(tools["Multitool"]) > 0
+    # 1) get_tools() must return a list
+    assert isinstance(tools, list), f"Expected list but got {type(tools)}"
+
+    # 2) list must not be empty
+    assert len(tools) > 0, "Tools list is empty!"
+
+    # 3) validate each element is a StructuredTool
+    for t in tools:
+        assert hasattr(t, "name"), "Tool object has no name"
+        assert hasattr(t, "description"), "Tool object has no description"
+
+    # 4) ensure expected tools exist
+    tool_names = [t.name for t in tools]
+    expected_tools = ["health_check", "get_weather", "add", "multiply", "subtract", "divide", "today_date"]
+
+    for et in expected_tools:
+        assert et in tool_names, f"Missing tool: {et}"
