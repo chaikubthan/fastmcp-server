@@ -24,7 +24,19 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip install -r requirements.txt
-
+    # --- Start MCP server locally ---
+    - name: Start MCP Server locally
+      run: |
+        nohup python main.py > mcp_server.log 2>&1 &
+        sleep 4
+    
+    # --- Run unit tests against local MCP server ---
+    - name: Run Unit Tests (Local MCP)
+      env:
+        MCP_URL: "http://localhost:3000/mcp"
+      run: |
+        pytest tests/local_test.py -rP
+        
     # --- 4) Setup SSH Key ---
     - name: Setup SSH Key
       run: |
