@@ -42,20 +42,30 @@ jobs:
     # --- 6) Check EC2 Health ---
     - name: Check EC2 Health
       run: |
-        ssh -i ssh_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "echo 'EC2 OK'"
-        
+        ssh -i ssh_key -o StrictHostKeyChecking=no \
+        ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "echo 'EC2 OK'"
 
-    # --- 7) Upload files to EC2 (ignore .git, workflow, large unnecessary folders) ---
+    # --- 7) Level 2: Check Docker Daemon on EC2 ---
+    - name: Check Docker is running
+      run: |
+        ssh -i ssh_key -o StrictHostKeyChecking=no \
+        ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "\
+          systemctl is-active --quiet docker || (echo '❌ Docker is NOT running' && exit 1)
+        "
+        echo "✔ Docker daemon is running"
+
+    # --- 8) Upload files to EC2 ---
     - name: Upload files to EC2
       run: |
         rsync -avz --exclude '.git' --exclude '.github' --exclude '__pycache__' \
           -e "ssh -i ssh_key -o StrictHostKeyChecking=no" \
           ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/fastmcp/
 
-    # --- 8) Restart MCP server remotely (Docker Compose) ---
+    # --- 9) Restart MCP server remotely ---
     - name: Restart FastMCP
       run: |
-        ssh -i ssh_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+        ssh -i ssh_key -o StrictHostKeyChecking=no \
+        ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
           cd ~/fastmcp
           
           echo "Stopping old containers..."
@@ -66,3 +76,12 @@ jobs:
 
           echo "Deployment complete!"
         EOF
+
+    # --- 10) Level 3: POST-DEPLOY MCP API CHECK (Critical!) ---
+    - name: Check MCP API after deployment
+      run: |
+        echo "Checking new MCP API..."
+        curl -s --fail-with-body --max-time 8 \
+          http://${{ secrets.EC2_HOST }}:${{ secrets.MCP_PORT }}/mcp \
+          || (echo '❌ MCP API NOT responding after deployment' && exit 1)
+        echo "✔ MCP API OK — deployment successful!"
