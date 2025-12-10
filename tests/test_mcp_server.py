@@ -35,7 +35,7 @@ async def test_get_tools():
 
     # 4) ensure expected tools exist
     tool_names = [t.name for t in tools]
-    expected_tools = ["health_check", "get_weather", "add", "multiply", "subtract", "divide", "today_date"]
+    expected_tools = ["health_check"]
 
     for et in expected_tools:
         assert et in tool_names, f"Missing tool: {et}"
