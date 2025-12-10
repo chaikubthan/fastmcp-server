@@ -24,32 +24,32 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip install -r requirements.txt
-    # --- Start MCP server locally ---
+    # --- 4) Start MCP server locally ---
     - name: Start MCP Server locally
       run: |
         nohup python main.py > mcp_server.log 2>&1 &
         sleep 4
     
-    # --- Run unit tests against local MCP server ---
+    # --- 5) Run unit tests against local MCP server ---
     - name: Run Unit Tests (Local MCP)
       env:
         MCP_URL: "http://localhost:3000/mcp"
       run: |
         pytest tests/local_test.py -rP
         
-    # --- 4) Setup SSH Key ---
+    # --- 6) Setup SSH Key ---
     - name: Setup SSH Key
       run: |
         echo "${{ secrets.EC2_SSH_KEY }}" > ssh_key
         chmod 600 ssh_key
     
-    # --- 5) Check EC2 Health ---
+    # --- 7) Check EC2 Health ---
     - name: Check EC2 Health
       run: |
         ssh -i ssh_key -o StrictHostKeyChecking=no \
         ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "echo 'EC2 OK'"
 
-    # --- 6) Check Docker Daemon on EC2 ---
+    # --- 8) Check Docker Daemon on EC2 ---
     - name: Check Docker is running
       run: |
         ssh -i ssh_key -o StrictHostKeyChecking=no \
@@ -58,14 +58,14 @@ jobs:
         "
         echo "✔ Docker daemon is running"
 
-    # --- 7) Upload files to EC2 ---
+    # --- 9) Upload files to EC2 ---
     - name: Upload files to EC2
       run: |
         rsync -avz --exclude '.git' --exclude '.github' --exclude '__pycache__' \
           -e "ssh -i ssh_key -o StrictHostKeyChecking=no" \
           ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/fastmcp/
 
-    # --- 8) Restart MCP server remotely ---
+    # --- 10) Restart MCP server remotely ---
     - name: Restart FastMCP
       run: |
         ssh -i ssh_key -o StrictHostKeyChecking=no \
@@ -81,8 +81,30 @@ jobs:
           echo "Deployment complete!"
         EOF
 
-    # --- 9) Run unit tests (Stop deploy if fail) ---
-    - name: Run MCP Unit Tests
+    # --- 11) Wait for EC2 MCP server to become ready ---
+    - name: Wait for MCP Ready
+      env:
+        EC2_HOST: ${{ secrets.EC2_HOST }}
+        MCP_PORT: ${{ secrets.MCP_PORT }}
+      run: |
+        echo "Waiting for MCP server to be ready..."
+        for i in {1..10}; do
+          if curl -s http://$EC2_HOST:$MCP_PORT/mcp > /dev/null; then
+            echo "✔ MCP is ready!"
+            break
+          fi
+          echo "MCP not ready yet... retry $i/10"
+          sleep 3
+        done
+
+        # If still not ready after retries, exit
+        if ! curl -s http://$EC2_HOST:$MCP_PORT/mcp > /dev/null; then
+          echo "❌ MCP did NOT become ready"
+          exit 1
+        fi
+
+    # --- 12) Run post-deploy Integration Tests ---
+    - name: Run MCP Unit Tests (EC2 Integration Test)
       env:
         EC2_HOST: ${{ secrets.EC2_HOST }}
         MCP_PORT: ${{ secrets.MCP_PORT }}
