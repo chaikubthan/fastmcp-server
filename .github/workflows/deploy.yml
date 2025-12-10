@@ -22,9 +22,10 @@ jobs:
     # --- 3) Install dependencies ---
     - name: Install test dependencies
       run: |
-        pip install -r requirements.txt
+        python -m pip install --upgrade pip
+        python -m pip install -r requirements.txt
 
-    # --- 4) Run unit tests against MCP server ---
+    # --- 4) Run unit tests (Stop deploy if fail) ---
     - name: Run MCP Unit Tests
       env:
         EC2_HOST: ${{ secrets.EC2_HOST }}
@@ -32,22 +33,39 @@ jobs:
       run: |
         pytest -q
 
-    # --- 5) Setup SSH Key ---
+    # --- 5) Nice CI Summary ---
+    - name: CI Report Summary
+      if: success()
+      run: |
+        echo ""
+        echo "=========== ✅ MCP CI SUMMARY ==========="
+        echo "🎉 All tests passed — proceeding to deploy"
+        echo "=========================================="
+
+    # --- 6) Setup SSH Key ---
     - name: Setup SSH Key
       run: |
         echo "${{ secrets.EC2_SSH_KEY }}" > ssh_key
         chmod 600 ssh_key
 
-    # --- 6) Upload files to EC2 ---
+    # --- 7) Upload files to EC2 (ignore .git, workflow, large unnecessary folders) ---
     - name: Upload files to EC2
       run: |
-        scp -i ssh_key -o StrictHostKeyChecking=no -r ./* ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/fastmcp/
+        rsync -avz --exclude '.git' --exclude '.github' --exclude '__pycache__' \
+          -e "ssh -i ssh_key -o StrictHostKeyChecking=no" \
+          ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/fastmcp/
 
-    # --- 7) Restart MCP server (Docker) ---
+    # --- 8) Restart MCP server remotely (Docker Compose) ---
     - name: Restart FastMCP
       run: |
         ssh -i ssh_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
           cd ~/fastmcp
-          docker-compose down || docker compose down || true
-          docker-compose up -d --build || docker compose up -d --build
+          
+          echo "Stopping old containers..."
+          docker compose down || docker-compose down || true
+
+          echo "Rebuilding & starting new containers..."
+          docker compose up -d --build || docker-compose up -d --build
+
+          echo "Deployment complete!"
         EOF
