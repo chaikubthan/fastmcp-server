@@ -5,22 +5,45 @@ on:
     branches: [ "main" ]
 
 jobs:
-  deploy:
+  test-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
+    # --- 1) Checkout ---
     - name: Checkout source code
       uses: actions/checkout@v4
 
+    # --- 2) Setup Python ---
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    # --- 3) Install dependencies ---
+    - name: Install test dependencies
+      run: |
+        pip install -r requirements.txt
+
+    # --- 4) Run unit tests against MCP server ---
+    - name: Run MCP Unit Tests
+      env:
+        EC2_HOST: ${{ secrets.EC2_HOST }}
+        MCP_PORT: ${{ secrets.MCP_PORT }}
+      run: |
+        pytest -q
+
+    # --- 5) Setup SSH Key ---
     - name: Setup SSH Key
       run: |
         echo "${{ secrets.EC2_SSH_KEY }}" > ssh_key
         chmod 600 ssh_key
 
+    # --- 6) Upload files to EC2 ---
     - name: Upload files to EC2
       run: |
         scp -i ssh_key -o StrictHostKeyChecking=no -r ./* ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/fastmcp/
 
+    # --- 7) Restart MCP server (Docker) ---
     - name: Restart FastMCP
       run: |
         ssh -i ssh_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
