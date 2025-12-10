@@ -1,6 +1,8 @@
 version: "3.9"
+
 services:
   fastmcp:
     build: .
+    container_name: fastmcp
     ports:
       - "3000:3000"
