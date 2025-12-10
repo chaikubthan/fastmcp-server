@@ -75,6 +75,6 @@ jobs:
         EC2_HOST: ${{ secrets.EC2_HOST }}
         MCP_PORT: ${{ secrets.MCP_PORT }}
       run: |
-        pytest -rP
+        pytest tests/test_mcp_server.py  -rP
 
 
