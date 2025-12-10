@@ -111,10 +111,23 @@ jobs:
       run: |
         pytest tests/test_mcp_server.py  -rP
 
-    - name: Upload MCP Log
+    # --- Upload full log every run ---
+    - name: Upload MCP Log (always)
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: mcp-log
-        path: mcp_server.log        
+        name: mcp-log-full
+        path: mcp_server.log
+        if-no-files-found: ignore
+    
+    
+    # --- Upload fail-only log ---
+    - name: Upload MCP Log (failure only)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: mcp-log-on-failure
+        path: mcp_server.log
+        if-no-files-found: ignore
 
 
