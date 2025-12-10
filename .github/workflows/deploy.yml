@@ -1,0 +1,29 @@
+name: Deploy FastMCP to EC2
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup SSH Key
+      run: |
+        echo "${{ secrets.EC2_SSH_KEY }}" > ssh_key
+        chmod 600 ssh_key
+
+    - name: Upload files to EC2
+      run: |
+        scp -i ssh_key -o StrictHostKeyChecking=no -r ./* ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/fastmcp/
+
+    - name: Restart FastMCP
+      run: |
+        ssh -i ssh_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          cd ~/fastmcp
+          docker compose down || true
+          docker compose up -d --build
+        EOF
