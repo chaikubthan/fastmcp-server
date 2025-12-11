@@ -9,125 +9,173 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # --- 1) Checkout ---
+    # ============================
+    # 1) CHECKOUT
+    # ============================
     - name: Checkout source code
       uses: actions/checkout@v4
 
-    # --- 2) Setup Python ---
+    # ============================
+    # 2) INSTALL PYTHON
+    # ============================
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: "3.11"
 
-    # --- 3) Install dependencies ---
+    # ============================
+    # 3) INSTALL DEPENDENCIES
+    # ============================
     - name: Install test dependencies
       run: |
         python -m pip install --upgrade pip
         python -m pip install -r requirements.txt
-    # --- 4) Start MCP server locally ---
+
+    # ============================
+    # 4) LOCAL MCP SERVER TEST
+    # ============================
+
     - name: Start MCP Server locally
       run: |
         nohup python main.py > mcp_server.log 2>&1 &
+        echo $! > local_mcp_pid.txt
         sleep 4
-    
-    # --- 5) Run unit tests against local MCP server ---
+
     - name: Run Unit Tests (Local MCP)
       env:
         MCP_URL: "http://localhost:3000/mcp"
       run: |
         pytest tests/local_test.py -rP
-        
-    # --- 6) Setup SSH Key ---
+
+    - name: Stop Local MCP Server
+      run: |
+        if [ -f local_mcp_pid.txt ]; then
+          kill $(cat local_mcp_pid.txt) || true
+          rm local_mcp_pid.txt
+        fi
+        echo "✔ Local MCP server stopped"
+
+    # ============================
+    # 5) DOCKER TEST STAGE
+    # ============================
+
+    - name: Build Docker Image
+      run: |
+        docker build -t fastmcp-test .
+
+    - name: Run Docker MCP Container
+      run: |
+        docker run -d --name mcp-test -p 3001:3000 fastmcp-test
+        sleep 5
+
+    - name: Test MCP Server (Docker)
+      env:
+        MCP_URL: "http://localhost:3001/mcp"
+      run: |
+        pytest tests/local_test.py -rP
+
+    - name: Stop Docker MCP Container
+      run: |
+        docker stop mcp-test || true
+        docker rm mcp-test || true
+
+    # ============================
+    # 6) SETUP SSH FOR DEPLOY
+    # ============================
     - name: Setup SSH Key
       run: |
         echo "${{ secrets.EC2_SSH_KEY }}" > ssh_key
         chmod 600 ssh_key
-    
-    # --- 7) Check EC2 Health ---
+
+    # ============================
+    # 7) EC2 HEALTH CHECK
+    # ============================
     - name: Check EC2 Health
       run: |
         ssh -i ssh_key -o StrictHostKeyChecking=no \
         ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "echo 'EC2 OK'"
 
-    # --- 8) Check Docker Daemon on EC2 ---
-    - name: Check Docker is running
+    - name: Check Docker is running on EC2
       run: |
         ssh -i ssh_key -o StrictHostKeyChecking=no \
         ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "\
-          systemctl is-active --quiet docker || (echo '❌ Docker is NOT running' && exit 1)
+          systemctl is-active --quiet docker || (echo '❌ Docker NOT running' && exit 1)
         "
-        echo "✔ Docker daemon is running"
+        echo "✔ Docker running"
 
-    # --- 9) Upload files to EC2 ---
+    # ============================
+    # 8) SYNC FILES TO EC2
+    # ============================
     - name: Upload files to EC2
       run: |
         rsync -avz --exclude '.git' --exclude '.github' --exclude '__pycache__' \
-          -e "ssh -i ssh_key -o StrictHostKeyChecking=no" \
-          ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/fastmcp/
+        -e "ssh -i ssh_key -o StrictHostKeyChecking=no" \
+        ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/fastmcp/
 
-    # --- 10) Restart MCP server remotely ---
-    - name: Restart FastMCP
+    # ============================
+    # 9) RESTART MCP ON EC2 (DOCKER)
+    # ============================
+    - name: Restart FastMCP on EC2
       run: |
         ssh -i ssh_key -o StrictHostKeyChecking=no \
         ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
           cd ~/fastmcp
-          
-          echo "Stopping old containers..."
+          echo "Stopping container..."
           docker compose down || docker-compose down || true
 
-          echo "Rebuilding & starting new containers..."
+          echo "Rebuilding + starting..."
           docker compose up -d --build || docker-compose up -d --build
-
-          echo "Deployment complete!"
         EOF
 
-    # --- 11) Wait for EC2 MCP server to become ready ---
+    # ============================
+    # 10) WAIT FOR MCP TO BE READY
+    # ============================
     - name: Wait for MCP Ready
       env:
         EC2_HOST: ${{ secrets.EC2_HOST }}
         MCP_PORT: ${{ secrets.MCP_PORT }}
       run: |
-        echo "Waiting for MCP server to be ready..."
+        echo "Waiting for MCP to start ..."
         for i in {1..10}; do
           if curl -s http://$EC2_HOST:$MCP_PORT/mcp > /dev/null; then
             echo "✔ MCP is ready!"
             break
           fi
-          echo "MCP not ready yet... retry $i/10"
+          echo "Retry $i/10 ..."
           sleep 3
         done
 
-        # If still not ready after retries, exit
         if ! curl -s http://$EC2_HOST:$MCP_PORT/mcp > /dev/null; then
-          echo "❌ MCP did NOT become ready"
+          echo "❌ MCP never became ready"
           exit 1
         fi
 
-    # --- 12) Run post-deploy Integration Tests ---
-    - name: Run MCP Unit Tests (EC2 Integration Test)
+    # ============================
+    # 11) EC2 INTEGRATION TEST
+    # ============================
+    - name: Run MCP Tests on EC2
       env:
         EC2_HOST: ${{ secrets.EC2_HOST }}
         MCP_PORT: ${{ secrets.MCP_PORT }}
       run: |
-        pytest tests/test_mcp_server.py  -rP
+        pytest tests/test_mcp_server.py -rP
 
-    # --- Upload full log every run ---
-    - name: Upload MCP Log (always)
+    # ============================
+    # 12) LOG ARTIFACTS
+    # ============================
+
+    - name: Upload Full Log
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: mcp-log-full
         path: mcp_server.log
         if-no-files-found: ignore
-    
-    
-    # --- Upload fail-only log ---
-    - name: Upload MCP Log (failure only)
+
+    - name: Upload Failure Log
       if: failure()
       uses: actions/upload-artifact@v4
       with:
         name: mcp-log-on-failure
         path: mcp_server.log
         if-no-files-found: ignore
-
-
