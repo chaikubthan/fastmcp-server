@@ -19,6 +19,11 @@ async def get_weather(location: str) -> str:
     return "It's always sunny in New York"
 
 @mcp.tool()
+async def get_city(location: str) -> str:
+    """Get city name."""
+    return "Newyork wtf"
+    
+@mcp.tool()
 async def add(a: int, b: int) -> int:
     return a + b
 
